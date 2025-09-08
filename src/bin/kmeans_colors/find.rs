@@ -1,6 +1,6 @@
-use fxhash::FxHashMap;
 use palette::cast::{AsComponents, ComponentsAs};
 use palette::{white_point::D65, FromColor, IntoColor, Lab, Srgb, Srgba};
+use rustc_hash::FxHashMap;
 
 use crate::args::Command;
 use crate::err::CliError;

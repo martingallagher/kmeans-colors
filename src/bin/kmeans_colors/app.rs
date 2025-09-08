@@ -2,10 +2,10 @@ use crate::args::Opt;
 use crate::filename::{create_filename, create_filename_palette};
 use crate::utils::{cached_srgba_to_lab, print_colors, save_image, save_image_alpha, save_palette};
 
-use fxhash::FxHashMap;
 use kmeans_colors::{get_kmeans, get_kmeans_hamerly, Calculate, Kmeans, MapColor, Sort};
 use palette::cast::{AsComponents, ComponentsAs};
 use palette::{white_point::D65, FromColor, IntoColor, Lab, LinSrgba, Srgb, Srgba};
+use rustc_hash::FxHashMap;
 
 pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
     if opt.input.is_empty() {

@@ -1,5 +1,9 @@
 # `kmeans-colors` changelog
 
+## Unreleased
+
+Replace dependency on unmaintained crate `fxhash` with `rustc-hash`.
+
 ## Version 0.7.0 - 2023-07
 
 Version bump for updating `rand` to `0.9`.

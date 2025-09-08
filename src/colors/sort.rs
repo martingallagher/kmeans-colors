@@ -20,7 +20,7 @@ where
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
     fn sort_indexed_colors(centroids: &[Self], indices: &[u8]) -> Vec<CentroidData<Self>> {
         // Count occurences of each color - "histogram"
-        let mut map: fxhash::FxHashMap<u8, u64> = centroids
+        let mut map: rustc_hash::FxHashMap<u8, u64> = centroids
             .iter()
             .enumerate()
             .map(|(i, _)| (i as u8, 0))
@@ -85,7 +85,7 @@ where
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
     fn sort_indexed_colors(centroids: &[Self], indices: &[u8]) -> Vec<CentroidData<Self>> {
         // Count occurences of each color - "histogram"
-        let mut map: fxhash::FxHashMap<u8, u64> = centroids
+        let mut map: rustc_hash::FxHashMap<u8, u64> = centroids
             .iter()
             .enumerate()
             .map(|(i, _)| (i as u8, 0))
