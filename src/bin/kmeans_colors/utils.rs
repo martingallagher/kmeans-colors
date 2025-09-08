@@ -7,7 +7,6 @@ use std::str::FromStr;
 
 use image::ImageEncoder;
 use palette::{white_point::D65, IntoColor, Lab, Srgb, Srgba};
-use rustc_hash::FxHashMap;
 
 use crate::err::CliError;
 use kmeans_colors::{Calculate, CentroidData};
@@ -208,7 +207,7 @@ pub fn save_palette<C: Calculate + Copy + IntoColor<Srgb>>(
 /// using `color.into_format().into_color()`.
 pub fn cached_srgba_to_lab<'a>(
     rgb: impl Iterator<Item = &'a Srgba<u8>>,
-    map: &mut FxHashMap<[u8; 3], Lab<D65, f32>>,
+    map: &mut hashbrown::HashMap<[u8; 3], Lab<D65, f32>>,
     lab_pixels: &mut Vec<Lab<D65, f32>>,
 ) {
     lab_pixels.extend(rgb.map(|color| {

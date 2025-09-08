@@ -1,6 +1,5 @@
 use palette::cast::{AsComponents, ComponentsAs};
 use palette::{white_point::D65, FromColor, IntoColor, Lab, Srgb, Srgba};
-use rustc_hash::FxHashMap;
 
 use crate::args::Command;
 use crate::err::CliError;
@@ -33,7 +32,7 @@ pub fn find_colors(
     let seed = seed.unwrap_or(0);
 
     // Cached results of Srgb<u8> -> Lab conversions; not cleared between runs
-    let mut lab_cache = FxHashMap::default();
+    let mut lab_cache = hashbrown::HashMap::default();
     // Vec of pixels converted to Lab; cleared and reused between runs
     let mut lab_pixels: Vec<Lab<D65, f32>> = Vec::new();
     // Vec of pixels converted to Srgb<f32>; cleared and reused between runs

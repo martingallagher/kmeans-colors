@@ -1,4 +1,4 @@
-use rand::distr::{Distribution, weighted::WeightedIndex};
+use rand::distr::{weighted::WeightedIndex, Distribution};
 use rand::Rng;
 
 /// k-means++ centroid initialization.

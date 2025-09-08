@@ -1,10 +1,10 @@
 # `kmeans-colors` changelog
 
-## Unreleased
+## Version 0.7.1 - 2025-09
 
-Replace dependency on unmaintained crate `fxhash` with `rustc-hash`.
+Replace dependency on unmaintained crate `fxhash` with `hashbrown`, which uses `foldhash` as its hashing algorithm.
 
-## Version 0.7.0 - 2023-07
+## Version 0.7.0 - 2025-04
 
 Version bump for updating `rand` to `0.9`.
 

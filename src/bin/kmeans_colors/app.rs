@@ -5,7 +5,6 @@ use crate::utils::{cached_srgba_to_lab, print_colors, save_image, save_image_alp
 use kmeans_colors::{get_kmeans, get_kmeans_hamerly, Calculate, Kmeans, MapColor, Sort};
 use palette::cast::{AsComponents, ComponentsAs};
 use palette::{white_point::D65, FromColor, IntoColor, Lab, LinSrgba, Srgb, Srgba};
-use rustc_hash::FxHashMap;
 
 pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
     if opt.input.is_empty() {
@@ -15,7 +14,7 @@ pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
     let seed = opt.seed.unwrap_or(0);
 
     // Cached results of Srgb<u8> -> Lab conversions; not cleared between runs
-    let mut lab_cache = FxHashMap::default();
+    let mut lab_cache = hashbrown::HashMap::default();
     // Vec of pixels converted to Lab; cleared and reused between runs
     let mut lab_pixels: Vec<Lab<D65, f32>> = Vec::new();
     // Vec of pixels converted to Srgb<f32>; cleared and reused between runs

@@ -1,6 +1,6 @@
 [package]
 name = "kmeans_colors"
-version = "0.7.0"
+version = "0.7.1"
 authors = ["okaneco <47607823+okaneco@users.noreply.github.com>"]
 edition = "2018"
 exclude = ["test", "gfx", ".github"]
@@ -25,15 +25,21 @@ app = [
     ]
 
 # Enable `palette` color types
-palette_color = ["palette", "num-traits", "rustc-hash"]
+palette_color = [
+        "hashbrown",
+        "num-traits",
+        "palette",
+    ]
 
 # Fast, non-cryptographic hash algorithms and collections.
-[dependencies.rustc-hash]
-version = "2.1.1"
+[dependencies.hashbrown]
+version = "0.16"
+default-features = false
+features = ["default-hasher", "inline-more"]
 optional = true
 
 [dependencies.image]
-version = "0.25.6"
+version = "0.25.8"
 default-features = false
 features = ["jpeg", "png"]
 optional = true
