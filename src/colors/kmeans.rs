@@ -4,6 +4,7 @@ use num_traits::{Float, FromPrimitive, Zero};
 use palette::{rgb::Rgb, rgb::Rgba, Lab};
 
 use rand::Rng;
+use rand::RngExt;
 
 use crate::kmeans::{Calculate, Hamerly, HamerlyCentroids, HamerlyPoint};
 
