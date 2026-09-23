@@ -57,6 +57,7 @@ pub fn save_image(
     imgy: u32,
     title: &Path,
     palette: bool,
+    fast_png: bool,
 ) -> Result<(), Box<dyn Error>> {
     let mut w = BufWriter::new(File::create(title)?);
     if title.extension().unwrap() == "png" {
@@ -64,7 +65,11 @@ pub fn save_image(
         use image::codecs::png::FilterType::{Adaptive, NoFilter};
         let encoder = image::codecs::png::PngEncoder::new_with_quality(
             w,
-            image::codecs::png::CompressionType::Best,
+            if fast_png {
+                image::codecs::png::CompressionType::Fast
+            } else {
+                image::codecs::png::CompressionType::Best
+            },
             if palette { Adaptive } else { NoFilter },
         );
 
@@ -97,12 +102,17 @@ pub fn save_image_alpha(
     imgx: u32,
     imgy: u32,
     title: &Path,
+    fast_png: bool,
 ) -> Result<(), Box<dyn Error>> {
     let mut w = BufWriter::new(File::create(title)?);
     if title.extension().unwrap() == "png" {
         let encoder = image::codecs::png::PngEncoder::new_with_quality(
             w,
-            image::codecs::png::CompressionType::Best,
+            if fast_png {
+                image::codecs::png::CompressionType::Fast
+            } else {
+                image::codecs::png::CompressionType::Best
+            },
             image::codecs::png::FilterType::NoFilter,
         );
 
@@ -136,6 +146,7 @@ pub fn save_palette<C: Calculate + Copy + IntoColor<Srgb>>(
     height: u32,
     width: Option<u32>,
     title: &Path,
+    fast_png: bool,
 ) -> Result<(), Box<dyn Error>> {
     let len = res.len() as u32;
     let w = match width {
@@ -153,20 +164,20 @@ pub fn save_palette<C: Calculate + Copy + IntoColor<Srgb>>(
     let mut imgbuf: image::RgbImage = image::ImageBuffer::new(w, height);
 
     if !proportional {
+        let colors: Vec<[u8; 3]> = res
+            .iter()
+            .map(|r| r.centroid.into_color().into_format().into())
+            .collect();
         for (x, _, pixel) in imgbuf.enumerate_pixels_mut() {
-            let color = res
+            let color = colors
                 .get(
                     (((x as f32 / w as f32) * len as f32 - 0.5)
                         .max(0.0)
                         .min(len as f32))
                     .round() as usize,
                 )
-                .unwrap()
-                .centroid
-                .into_color()
-                .into_format()
-                .into();
-            *pixel = image::Rgb(color);
+                .unwrap();
+            *pixel = image::Rgb(*color);
         }
     } else {
         let mut curr_pos = 0;
@@ -183,7 +194,7 @@ pub fn save_palette<C: Calculate + Copy + IntoColor<Srgb>>(
                 }
                 // If boundary has been clamped, return early
                 if boundary == w {
-                    return save_image(imgbuf.as_raw(), w, height, title, true);
+                    return save_image(imgbuf.as_raw(), w, height, title, true, fast_png);
                 }
                 curr_pos = boundary;
             }
@@ -196,7 +207,38 @@ pub fn save_palette<C: Calculate + Copy + IntoColor<Srgb>>(
         }
     }
 
-    save_image(imgbuf.as_raw(), w, height, title, true)
+    save_image(imgbuf.as_raw(), w, height, title, true, fast_png)
+}
+
+/// Map the assignments of fully opaque pixels back into the original image.
+pub fn map_opaque_pixels(
+    original: &[Srgba<u8>],
+    centroids: &[Srgba<u8>],
+    indices: &[u8],
+) -> Vec<Srgba<u8>> {
+    let mut indices = indices.iter();
+    original
+        .iter()
+        .map(|pixel| {
+            if pixel.alpha == 255 {
+                let index = *indices.next().unwrap() as usize;
+                *centroids
+                    .get(index)
+                    .unwrap_or_else(|| centroids.last().unwrap())
+            } else {
+                Srgba::new(0, 0, 0, 0)
+            }
+        })
+        .collect()
+}
+
+/// Restore cluster-index order, using the last replacement for unused clusters.
+pub fn indexed_palette<C: Calculate + Copy>(colors: &[CentroidData<C>], len: usize) -> Vec<C> {
+    let mut palette = vec![colors.last().unwrap().centroid; len];
+    for color in colors {
+        palette[color.index as usize] = color.centroid;
+    }
+    palette
 }
 
 /// Optimized conversion of colors from Srgb to Lab using a hashmap for caching
@@ -214,4 +256,47 @@ pub fn cached_srgba_to_lab<'a>(
         *map.entry([color.red, color.green, color.blue])
             .or_insert_with(|| color.into_linear::<_, f32>().into_color())
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opaque_assignments_skip_transparent_pixels() {
+        let transparent = Srgba::new(0, 0, 0, 0);
+        let red = Srgba::new(255, 0, 0, 255);
+        let green = Srgba::new(0, 255, 0, 255);
+        let original = [
+            Srgba::new(1, 2, 3, 0),
+            red,
+            Srgba::new(1, 2, 3, 254),
+            green,
+            transparent,
+        ];
+        assert_eq!(
+            map_opaque_pixels(&original, &[red, green], &[1, 0]),
+            [transparent, green, transparent, red, transparent],
+        );
+        assert_eq!(map_opaque_pixels(&[transparent], &[], &[]), [transparent]);
+    }
+
+    #[test]
+    fn replacement_palette_preserves_indices_of_nonempty_clusters() {
+        let red = Srgb::new(1.0, 0.0, 0.0);
+        let green = Srgb::new(0.0, 1.0, 0.0);
+        let colors = [
+            CentroidData {
+                centroid: red,
+                percentage: 0.75,
+                index: 3,
+            },
+            CentroidData {
+                centroid: green,
+                percentage: 0.25,
+                index: 1,
+            },
+        ];
+        assert_eq!(indexed_palette(&colors, 4), [green, green, green, red]);
+    }
 }

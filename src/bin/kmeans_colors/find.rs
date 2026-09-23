@@ -4,7 +4,10 @@ use palette::{white_point::D65, FromColor, IntoColor, Lab, Srgb, Srgba};
 use crate::args::Command;
 use crate::err::CliError;
 use crate::filename::create_filename;
-use crate::utils::{cached_srgba_to_lab, parse_color, print_colors, save_image, save_image_alpha};
+use crate::utils::{
+    cached_srgba_to_lab, indexed_palette, map_opaque_pixels, parse_color, print_colors, save_image,
+    save_image_alpha,
+};
 use kmeans_colors::{get_kmeans, get_kmeans_hamerly, Calculate, Kmeans, MapColor, Sort};
 
 /// Find the image pixels which closest match the supplied colors and save that
@@ -23,6 +26,7 @@ pub fn find_colors(
         output,
         seed,
         transparent,
+        fast_png,
     }: Command,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Print filename if multiple files and percentage is set
@@ -50,7 +54,7 @@ pub fn find_colors(
 
         for file in &input {
             if display_filename {
-                println!("{}", &file.to_string_lossy());
+                println!("{}", file.to_string_lossy());
             }
 
             let img = image::open(file)?.into_rgba8();
@@ -70,7 +74,7 @@ pub fn find_colors(
             }
 
             if !replace {
-                let mut indices = Vec::with_capacity(img_vec.len());
+                let mut indices = Vec::with_capacity(lab_pixels.len());
 
                 // We only need to do one pass of getting the closest colors to the
                 // custom centroids
@@ -95,49 +99,29 @@ pub fn find_colors(
                         imgy,
                         &create_filename(&input, &output, "png", None, file)?,
                         false,
+                        fast_png,
                     )?;
                 } else {
-                    let rgb_centroids = &centroids
+                    let centroids = &centroids
                         .iter()
-                        .map(|&x| Srgb::from_linear(x.into_color()))
-                        .collect::<Vec<Srgb>>();
-
-                    let mut indices = Vec::with_capacity(img_vec.len());
-                    rgb_pixels.clear();
-                    rgb_pixels.extend(
-                        img_vec
-                            .iter()
-                            .map(|x| Srgb::from_color(x.into_format::<_, f32>())),
-                    );
-                    Srgb::get_closest_centroid(&rgb_pixels, rgb_centroids, &mut indices);
-
-                    let centroids = &rgb_centroids
-                        .iter()
-                        .map(|x| Srgba::from(*x).into_format())
-                        .collect::<Vec<Srgba<u8>>>();
-
-                    let rgba: Vec<Srgba<u8>> = Srgba::map_indices_to_centroids(centroids, &indices)
-                        .iter()
-                        .zip(img_vec)
-                        .map(|(x, orig)| {
-                            if orig.alpha == 255 {
-                                *x
-                            } else {
-                                Srgba::new(0u8, 0, 0, 0)
-                            }
+                        .map(|&x| {
+                            Srgba::from(Srgb::<f32>::from_linear(x.into_color())).into_format()
                         })
-                        .collect();
+                        .collect::<Vec<Srgba<u8>>>();
+                    let rgba = map_opaque_pixels(img_vec, centroids, &indices);
 
                     save_image_alpha(
                         rgba.as_components(),
                         imgx,
                         imgy,
                         &create_filename(&input, &output, "png", None, file)?,
+                        fast_png,
                     )?;
                 }
             } else {
                 // Replace the k-means colors case
                 let mut result = Kmeans::new();
+                let mut best_error = f32::INFINITY;
                 let k = centroids.len();
                 if k > 1 {
                     for i in 0..runs {
@@ -149,7 +133,9 @@ pub fn find_colors(
                             &lab_pixels,
                             seed + i as u64,
                         );
-                        if run_result.score < result.score {
+                        let error = run_result.squared_error(&lab_pixels);
+                        if error < best_error {
+                            best_error = error;
                             result = run_result;
                         }
                     }
@@ -163,14 +149,13 @@ pub fn find_colors(
                             &lab_pixels,
                             seed + i as u64,
                         );
-                        if run_result.score < result.score {
+                        let error = run_result.squared_error(&lab_pixels);
+                        if error < best_error {
+                            best_error = error;
                             result = run_result;
                         }
                     }
                 }
-
-                // This is the easiest way to make this work for transparent without a larger restructuring
-                let cloned_res = result.centroids.clone();
 
                 // We want to sort the user centroids based on the kmeans colors
                 // sorted by luminosity using the u8 returned in `sorted`. This
@@ -187,9 +172,7 @@ pub fn find_colors(
                     print_colors(percentage, &res)?;
                 }
 
-                // Sorting the centroids now
-                res.sort_unstable_by(|a, b| (a.index).cmp(&b.index));
-                let sorted: Vec<Lab<D65, f32>> = res.iter().map(|x| x.centroid).collect();
+                let sorted = indexed_palette(&res, result.centroids.len());
 
                 if !transparent {
                     let rgb_centroids = &sorted
@@ -204,48 +187,30 @@ pub fn find_colors(
                         imgy,
                         &create_filename(&input, &output, "png", None, file)?,
                         false,
+                        fast_png,
                     )?;
                 } else {
-                    let rgb_centroids = &sorted
-                        .iter()
-                        .map(|&x| Srgb::from_linear(x.into_color()))
-                        .collect::<Vec<Srgb>>();
-
-                    let mut indices = Vec::with_capacity(img_vec.len());
-                    rgb_pixels.clear();
-                    rgb_pixels.extend(
-                        img_vec
-                            .iter()
-                            .map(|x| Srgb::from_color(x.into_format::<_, f32>())),
+                    let mut indices = Vec::with_capacity(lab_pixels.len());
+                    Lab::<D65, f32>::get_closest_centroid(
+                        &lab_pixels,
+                        &result.centroids,
+                        &mut indices,
                     );
-                    let temp_centroids = cloned_res
-                        .iter()
-                        .map(|&x| Srgb::from_linear(x.into_color()))
-                        .collect::<Vec<Srgb>>();
-                    Srgb::get_closest_centroid(&rgb_pixels, &temp_centroids, &mut indices);
 
-                    let centroids = &rgb_centroids
+                    let centroids = &sorted
                         .iter()
-                        .map(|x| Srgba::from(*x).into_format())
-                        .collect::<Vec<Srgba<u8>>>();
-
-                    let rgba: Vec<Srgba<u8>> = Srgba::map_indices_to_centroids(centroids, &indices)
-                        .iter()
-                        .zip(img_vec)
-                        .map(|(x, orig)| {
-                            if orig.alpha == 255 {
-                                *x
-                            } else {
-                                Srgba::new(0u8, 0, 0, 0)
-                            }
+                        .map(|&x| {
+                            Srgba::from(Srgb::<f32>::from_linear(x.into_color())).into_format()
                         })
-                        .collect();
+                        .collect::<Vec<Srgba<u8>>>();
+                    let rgba = map_opaque_pixels(img_vec, centroids, &indices);
 
                     save_image_alpha(
                         rgba.as_components(),
                         imgx,
                         imgy,
                         &create_filename(&input, &output, "png", None, file)?,
+                        fast_png,
                     )?;
                 }
             }
@@ -261,7 +226,7 @@ pub fn find_colors(
 
         for file in &input {
             if display_filename {
-                println!("{}", &file.to_string_lossy());
+                println!("{}", file.to_string_lossy());
             }
             let img = image::open(file)?.into_rgba8();
             let (imgx, imgy) = img.dimensions();
@@ -285,7 +250,7 @@ pub fn find_colors(
             }
 
             if !replace {
-                let mut indices = Vec::with_capacity(img_vec.len());
+                let mut indices = Vec::with_capacity(rgb_pixels.len());
 
                 // We only need to do one pass of getting the closest colors to the
                 // custom centroids
@@ -310,49 +275,27 @@ pub fn find_colors(
                         imgy,
                         &create_filename(&input, &output, "png", None, file)?,
                         false,
+                        fast_png,
                     )?;
                 } else {
-                    let rgb_centroids = &centroids
+                    let centroids = &centroids
                         .iter()
-                        .map(|x| x.into_format())
-                        .collect::<Vec<Srgb>>();
-
-                    let mut indices = Vec::with_capacity(img_vec.len());
-                    rgb_pixels.clear();
-                    rgb_pixels.extend(
-                        img_vec
-                            .iter()
-                            .map(|&x| Srgb::from_color(x.into_format::<_, f32>())),
-                    );
-                    Srgb::get_closest_centroid(&rgb_pixels, rgb_centroids, &mut indices);
-
-                    let centroids = &rgb_centroids
-                        .iter()
-                        .map(|x| Srgba::from(*x).into_format())
+                        .map(|&x| Srgba::from(x).into_format())
                         .collect::<Vec<Srgba<u8>>>();
-
-                    let rgb: Vec<Srgba<u8>> = Srgba::map_indices_to_centroids(centroids, &indices)
-                        .iter()
-                        .zip(img_vec)
-                        .map(|(x, orig)| {
-                            if orig.alpha == 255 {
-                                *x
-                            } else {
-                                Srgba::new(0u8, 0, 0, 0)
-                            }
-                        })
-                        .collect();
+                    let rgba = map_opaque_pixels(img_vec, centroids, &indices);
 
                     save_image_alpha(
-                        rgb.as_components(),
+                        rgba.as_components(),
                         imgx,
                         imgy,
                         &create_filename(&input, &output, "png", None, file)?,
+                        fast_png,
                     )?;
                 }
             } else {
                 // Replace the k-means colors case
                 let mut result = Kmeans::new();
+                let mut best_error = f32::INFINITY;
                 let k = centroids.len();
                 if k > 1 {
                     for i in 0..runs {
@@ -364,7 +307,9 @@ pub fn find_colors(
                             &rgb_pixels,
                             seed + i as u64,
                         );
-                        if run_result.score < result.score {
+                        let error = run_result.squared_error(&rgb_pixels);
+                        if error < best_error {
+                            best_error = error;
                             result = run_result;
                         }
                     }
@@ -378,13 +323,13 @@ pub fn find_colors(
                             &rgb_pixels,
                             seed + i as u64,
                         );
-                        if run_result.score < result.score {
+                        let error = run_result.squared_error(&rgb_pixels);
+                        if error < best_error {
+                            best_error = error;
                             result = run_result;
                         }
                     }
                 }
-
-                let cloned_res = result.centroids.clone();
 
                 // We want to sort the user centroids based on the kmeans colors
                 // sorted by luminosity using the u8 returned in `sorted`. This
@@ -400,9 +345,7 @@ pub fn find_colors(
                     print_colors(percentage, &res)?;
                 }
 
-                // Sorting the centroids now
-                res.sort_unstable_by(|a, b| (a.index).cmp(&b.index));
-                let sorted: Vec<Srgb> = res.iter().map(|x| x.centroid).collect();
+                let sorted = indexed_palette(&res, result.centroids.len());
 
                 if !transparent {
                     let rgb_centroids = &sorted
@@ -418,44 +361,24 @@ pub fn find_colors(
                         imgy,
                         &create_filename(&input, &output, "png", None, file)?,
                         false,
+                        fast_png,
                     )?;
                 } else {
-                    let rgb_centroids = &sorted
-                        .iter()
-                        .map(|x| x.into_format())
-                        .collect::<Vec<Srgb>>();
+                    let mut indices = Vec::with_capacity(rgb_pixels.len());
+                    Srgb::get_closest_centroid(&rgb_pixels, &result.centroids, &mut indices);
 
-                    let mut indices = Vec::with_capacity(img_vec.len());
-                    rgb_pixels.clear();
-                    rgb_pixels.extend(
-                        img_vec
-                            .iter()
-                            .map(|x| Srgb::from_color(x.into_format::<_, f32>())),
-                    );
-                    Srgb::get_closest_centroid(&rgb_pixels, &cloned_res, &mut indices);
-
-                    let centroids = &rgb_centroids
+                    let centroids = &sorted
                         .iter()
-                        .map(|x| Srgba::from(*x).into_format())
+                        .map(|&x| Srgba::from(x).into_format())
                         .collect::<Vec<Srgba<u8>>>();
-
-                    let rgba: Vec<Srgba<u8>> = Srgba::map_indices_to_centroids(centroids, &indices)
-                        .iter()
-                        .zip(img_vec)
-                        .map(|(x, orig)| {
-                            if orig.alpha == 255 {
-                                *x
-                            } else {
-                                Srgba::new(0u8, 0, 0, 0)
-                            }
-                        })
-                        .collect();
+                    let rgba = map_opaque_pixels(img_vec, centroids, &indices);
 
                     save_image_alpha(
                         rgba.as_components(),
                         imgx,
                         imgy,
                         &create_filename(&input, &output, "png", None, file)?,
+                        fast_png,
                     )?;
                 }
             }
@@ -463,4 +386,61 @@ pub fn find_colors(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::args::Opt;
+    use structopt::StructOpt;
+
+    #[test]
+    fn transparent_find_preserves_the_selected_color_space() {
+        let dir = std::env::temp_dir().join(format!("kmeans-find-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join("input.png");
+        let output = dir.join("output.png");
+        let pixels = [
+            255, 255, 0, 255, // Yellow is closer to green in Lab; RGB ties at red.
+            255, 0, 0, 127, 0, 0, 255, 0, 255, 0, 0, 255, 0, 255, 0, 255,
+        ];
+        image::save_buffer(&input, &pixels, 5, 1, image::ColorType::Rgba8).unwrap();
+
+        for rgb in [false, true] {
+            for fast_png in [false, true] {
+                let mut args = vec![
+                    "kmeans_colors",
+                    "find",
+                    "--input",
+                    input.to_str().unwrap(),
+                    "--output",
+                    output.to_str().unwrap(),
+                    "--colors",
+                    "ff0000,00ff00",
+                    "--transparent",
+                ];
+                if rgb {
+                    args.push("--rgb");
+                }
+                if fast_png {
+                    args.push("--fast-png");
+                }
+                find_colors(Opt::from_iter(args).cmd.unwrap()).unwrap();
+                let actual = image::open(&output).unwrap().into_rgba8();
+                assert_eq!(
+                    actual.get_pixel(0, 0).0,
+                    if rgb {
+                        [255, 0, 0, 255]
+                    } else {
+                        [0, 255, 0, 255]
+                    },
+                );
+                assert_eq!(actual.get_pixel(1, 0).0, [0, 0, 0, 0]);
+                assert_eq!(actual.get_pixel(2, 0).0, [0, 0, 0, 0]);
+                assert_eq!(actual.get_pixel(3, 0).0, [255, 0, 0, 255]);
+                assert_eq!(actual.get_pixel(4, 0).0, [0, 255, 0, 255]);
+            }
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

@@ -19,54 +19,24 @@ where
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
     fn sort_indexed_colors(centroids: &[Self], indices: &[u8]) -> Vec<CentroidData<Self>> {
-        // Count occurences of each color - "histogram"
-        let mut map: hashbrown::HashMap<u8, u64> = centroids
+        let mut counts = [0_u64; 256];
+        for &index in indices {
+            counts[index as usize] += 1;
+        }
+        assert!(!indices.is_empty());
+
+        let mut colors: Vec<_> = centroids
             .iter()
             .enumerate()
-            .map(|(i, _)| (i as u8, 0))
-            .collect();
-
-        for i in indices {
-            let count = map.entry(*i).or_insert(0);
-            *count += 1;
-        }
-
-        let len = indices.len();
-        assert!(len > 0);
-        let mut colors: Vec<(u8, f32)> = Vec::with_capacity(centroids.len());
-        for (i, _) in centroids.iter().enumerate() {
-            if let Some(&count) = map.get(&(i as u8)) {
-                colors.push((i as u8, (count as f32) / (len as f32)))
-            }
-        }
-
-        // Sort by increasing luminosity
-        let mut lab: Vec<(u8, Self)> = centroids
-            .iter()
-            .enumerate()
-            .map(|(i, x)| (i as u8, *x))
-            .collect();
-        lab.sort_unstable_by(|a, b| (a.1.l).partial_cmp(&b.1.l).unwrap());
-
-        // Pack the colors and their percentages into the return vector.
-        // Get the lab's key from the map, if the key value is greater than one
-        // attempt to find the index of it in the colors vec. Push that to the
-        // output vec tuple if successful.
-        lab.iter()
-            .filter_map(|x| map.get_key_value(&x.0))
-            .filter(|x| *x.1 > 0)
-            .filter_map(|x| match colors.get(*x.0 as usize) {
-                Some(x) => colors
-                    .iter()
-                    .position(|a| a.0 == x.0)
-                    .map(|y| CentroidData {
-                        centroid: *(centroids.get(colors.get(y).unwrap().0 as usize).unwrap()),
-                        percentage: colors.get(y).unwrap().1,
-                        index: y as u8,
-                    }),
-                None => None,
+            .filter(|(index, _)| counts[*index as u8 as usize] != 0)
+            .map(|(index, &centroid)| CentroidData {
+                centroid,
+                percentage: counts[index as u8 as usize] as f32 / indices.len() as f32,
+                index: index as u8,
             })
-            .collect()
+            .collect();
+        colors.sort_unstable_by(|a, b| a.centroid.l.partial_cmp(&b.centroid.l).unwrap());
+        colors
     }
 }
 
@@ -84,61 +54,76 @@ where
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
     fn sort_indexed_colors(centroids: &[Self], indices: &[u8]) -> Vec<CentroidData<Self>> {
-        // Count occurences of each color - "histogram"
-        let mut map: hashbrown::HashMap<u8, u64> = centroids
+        let mut counts = [0_u64; 256];
+        for &index in indices {
+            counts[index as usize] += 1;
+        }
+        assert!(!indices.is_empty());
+
+        let mut colors: Vec<_> = centroids
             .iter()
             .enumerate()
-            .map(|(i, _)| (i as u8, 0))
-            .collect();
-
-        for i in indices {
-            let count = map.entry(*i).or_insert(0);
-            *count += 1;
-        }
-
-        let len = indices.len();
-        assert!(len > 0);
-        let mut colors: Vec<(u8, f32)> = Vec::with_capacity(centroids.len());
-        for (i, _) in centroids.iter().enumerate() {
-            if let Some(&count) = map.get(&(i as u8)) {
-                colors.push((i as u8, (count as f32) / (len as f32)))
-            }
-        }
-
-        // Sort by increasing luminosity
-        let mut lab: Vec<(u8, Luma<S, T>)> = centroids
-            .iter()
-            .enumerate()
-            .map(|(i, x)| (i as u8, x.into_format().into_color()))
-            .collect();
-        lab.sort_unstable_by(|a, b| (a.1.luma).partial_cmp(&b.1.luma).unwrap());
-
-        // Pack the colors and their percentages into the return vector
-        lab.iter()
-            .filter_map(|x| map.get_key_value(&x.0))
-            .filter(|x| *x.1 > 0)
-            .filter_map(|x| match colors.get(*x.0 as usize) {
-                Some(x) => colors
-                    .iter()
-                    .position(|a| a.0 == x.0)
-                    .map(|y| CentroidData {
-                        centroid: *(centroids.get(colors.get(y).unwrap().0 as usize).unwrap()),
-                        percentage: colors.get(y).unwrap().1,
-                        index: y as u8,
-                    }),
-                None => None,
+            .filter(|(index, _)| counts[*index as u8 as usize] != 0)
+            .map(|(index, &centroid)| {
+                let luma: Luma<S, T> = centroid.into_color();
+                (
+                    CentroidData {
+                        centroid,
+                        percentage: counts[index as u8 as usize] as f32 / indices.len() as f32,
+                        index: index as u8,
+                    },
+                    luma.luma,
+                )
             })
-            .collect()
+            .collect();
+        colors.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        colors.into_iter().map(|(color, _)| color).collect()
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "palette_color"))]
 mod tests {
     use crate::{CentroidData, Sort};
-    #[cfg(feature = "palette_color")]
-    use palette::Srgb;
+    use palette::{Lab, Srgb};
 
-    #[cfg(feature = "palette_color")]
+    #[test]
+    fn sparse_labels_keep_original_indices_and_percentages() {
+        let lab: [Lab; 4] = [
+            Lab::new(100.0, 0.0, 0.0),
+            Lab::new(20.0, 0.0, 0.0),
+            Lab::new(0.0, 0.0, 0.0),
+            Lab::new(50.0, 0.0, 0.0),
+        ];
+        let rgb = [
+            Srgb::new(1.0, 1.0, 1.0),
+            Srgb::new(0.2, 0.2, 0.2),
+            Srgb::new(0.0, 0.0, 0.0),
+            Srgb::new(0.5, 0.5, 0.5),
+        ];
+        let indices = [0, 3, 3, 3, 2, 2, 2, 2];
+        let expected = [(2, 0.5), (3, 0.375), (0, 0.125)];
+        let sorted = Lab::sort_indexed_colors(&lab, &indices);
+        assert_eq!(sorted.len(), expected.len());
+        for (color, &(index, percentage)) in sorted.iter().zip(&expected) {
+            assert_eq!(color.index, index);
+            assert_eq!(color.percentage, percentage);
+            assert_eq!(color.centroid, lab[index as usize]);
+        }
+        let sorted = Srgb::sort_indexed_colors(&rgb, &indices);
+        assert_eq!(sorted.len(), expected.len());
+        for (color, &(index, percentage)) in sorted.iter().zip(&expected) {
+            assert_eq!(color.index, index);
+            assert_eq!(color.percentage, percentage);
+            assert_eq!(color.centroid, rgb[index as usize]);
+        }
+
+        let centroids = vec![Srgb::new(0.0, 0.0, 0.0); 256];
+        let sorted = Srgb::sort_indexed_colors(&centroids, &[255, 255]);
+        assert_eq!(sorted.len(), 1);
+        assert_eq!(sorted[0].index, 255);
+        assert_eq!(sorted[0].percentage, 1.0);
+    }
+
     #[test]
     fn dominant_color() {
         let res = vec![

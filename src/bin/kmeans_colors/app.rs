@@ -1,6 +1,9 @@
 use crate::args::Opt;
 use crate::filename::{create_filename, create_filename_palette};
-use crate::utils::{cached_srgba_to_lab, print_colors, save_image, save_image_alpha, save_palette};
+use crate::utils::{
+    cached_srgba_to_lab, map_opaque_pixels, print_colors, save_image, save_image_alpha,
+    save_palette,
+};
 
 use kmeans_colors::{get_kmeans, get_kmeans_hamerly, Calculate, Kmeans, MapColor, Sort};
 use palette::cast::{AsComponents, ComponentsAs};
@@ -22,7 +25,7 @@ pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
 
     for file in &opt.input {
         if opt.verbose {
-            println!("{}", &file.to_string_lossy());
+            println!("{}", file.to_string_lossy());
         }
         let img = image::open(file)?.into_rgba8();
         let (imgx, imgy) = img.dimensions();
@@ -46,6 +49,7 @@ pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
 
             // Iterate over amount of runs keeping best results
             let mut result = Kmeans::new();
+            let mut best_error = f32::INFINITY;
             if opt.k > 1 {
                 for i in 0..opt.runs {
                     let run_result = get_kmeans_hamerly(
@@ -56,7 +60,9 @@ pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                         &lab_pixels,
                         seed + i as u64,
                     );
-                    if run_result.score < result.score {
+                    let error = run_result.squared_error(&lab_pixels);
+                    if error < best_error {
+                        best_error = error;
                         result = run_result;
                     }
                 }
@@ -70,7 +76,9 @@ pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                         &lab_pixels,
                         seed + i as u64,
                     );
-                    if run_result.score < result.score {
+                    let error = run_result.squared_error(&lab_pixels);
+                    if error < best_error {
+                        best_error = error;
                         result = run_result;
                     }
                 }
@@ -101,6 +109,7 @@ pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                             Some(opt.k),
                             file,
                         )?,
+                        opt.fast_png,
                     )?;
                 }
             }
@@ -126,15 +135,12 @@ pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                     imgy,
                     &create_filename(&opt.input, &opt.output, &opt.extension, Some(opt.k), file)?,
                     false,
+                    opt.fast_png,
                 )?;
             } else {
-                // For transparent images, we get_closest_centroid based
-                // on the centroids we calculated and only paint in the pixels
-                // that have a full alpha
-                let mut indices = Vec::with_capacity(img_vec.len());
+                // Classify the retained opaque pixels against the final centroids.
+                let mut indices = Vec::with_capacity(lab_pixels.len());
 
-                lab_pixels.clear();
-                cached_srgba_to_lab(img_vec.iter(), &mut lab_cache, &mut lab_pixels);
                 Lab::<D65, f32>::get_closest_centroid(&lab_pixels, &result.centroids, &mut indices);
 
                 let centroids = &result
@@ -143,22 +149,13 @@ pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                     .map(|&x| Srgba::<f32>::from_linear(LinSrgba::from_color(x)).into_format())
                     .collect::<Vec<Srgba<u8>>>();
 
-                let rgba: Vec<Srgba<u8>> = Srgba::map_indices_to_centroids(centroids, &indices)
-                    .iter()
-                    .zip(img_vec)
-                    .map(|(x, orig)| {
-                        if orig.alpha == 255 {
-                            *x
-                        } else {
-                            Srgba::new(0u8, 0, 0, 0)
-                        }
-                    })
-                    .collect();
+                let rgba = map_opaque_pixels(img_vec, centroids, &indices);
                 save_image_alpha(
                     rgba.as_components(),
                     imgx,
                     imgy,
                     &create_filename(&opt.input, &opt.output, &opt.extension, Some(opt.k), file)?,
+                    opt.fast_png,
                 )?;
             }
         } else {
@@ -182,6 +179,7 @@ pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
 
             // Iterate over amount of runs keeping best results
             let mut result = Kmeans::new();
+            let mut best_error = f32::INFINITY;
             if opt.k > 1 {
                 for i in 0..opt.runs {
                     let run_result = get_kmeans_hamerly(
@@ -192,7 +190,9 @@ pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                         &rgb_pixels,
                         seed + i as u64,
                     );
-                    if run_result.score < result.score {
+                    let error = run_result.squared_error(&rgb_pixels);
+                    if error < best_error {
+                        best_error = error;
                         result = run_result;
                     }
                 }
@@ -206,7 +206,9 @@ pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                         &rgb_pixels,
                         seed + i as u64,
                     );
-                    if run_result.score < result.score {
+                    let error = run_result.squared_error(&rgb_pixels);
+                    if error < best_error {
+                        best_error = error;
                         result = run_result;
                     }
                 }
@@ -236,6 +238,7 @@ pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                             Some(opt.k),
                             file,
                         )?,
+                        opt.fast_png,
                     )?;
                 }
             }
@@ -261,19 +264,12 @@ pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                     imgy,
                     &create_filename(&opt.input, &opt.output, &opt.extension, Some(opt.k), file)?,
                     false,
+                    opt.fast_png,
                 )?;
             } else {
-                // For transparent images, we get_closest_centroid based
-                // on the centroids we calculated and only paint in the pixels
-                // that have a full alpha
-                let mut indices = Vec::with_capacity(img_vec.len());
+                // Classify the retained opaque pixels against the final centroids.
+                let mut indices = Vec::with_capacity(rgb_pixels.len());
 
-                rgb_pixels.clear();
-                rgb_pixels.extend(
-                    img_vec
-                        .iter()
-                        .map(|x| Srgb::<f32>::from_color(x.into_format::<_, f32>())),
-                );
                 Srgb::get_closest_centroid(&rgb_pixels, &result.centroids, &mut indices);
 
                 let centroids = &result
@@ -282,22 +278,13 @@ pub fn run(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
                     .map(|x| x.into_format().into())
                     .collect::<Vec<Srgba<u8>>>();
 
-                let rgb: Vec<Srgba<u8>> = Srgba::map_indices_to_centroids(centroids, &indices)
-                    .iter()
-                    .zip(img_vec)
-                    .map(|(x, orig)| {
-                        if orig.alpha == 255 {
-                            *x
-                        } else {
-                            Srgba::new(0u8, 0, 0, 0)
-                        }
-                    })
-                    .collect();
+                let rgb = map_opaque_pixels(img_vec, centroids, &indices);
                 save_image_alpha(
                     rgb.as_components(),
                     imgx,
                     imgy,
                     &create_filename(&opt.input, &opt.output, &opt.extension, Some(opt.k), file)?,
+                    opt.fast_png,
                 )?;
             }
         }

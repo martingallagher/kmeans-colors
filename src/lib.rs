@@ -76,6 +76,7 @@
 //!
 //! // Iterate over the runs, keep the best results
 //! let mut result = Kmeans::new();
+//! let mut best_error = f32::MAX;
 //! for i in 0..runs {
 //!     let run_result = get_kmeans(
 //!         k,
@@ -85,7 +86,9 @@
 //!         &lab,
 //!         seed + i as u64,
 //!     );
-//!     if run_result.score < result.score {
+//!     let error = run_result.squared_error(&lab);
+//!     if error < best_error {
+//!         best_error = error;
 //!         result = run_result;
 //!     }
 //! }
@@ -99,6 +102,7 @@
 //! # assert_eq!(into_component_slice(&buffer), [119, 119, 119, 119, 119, 119]);
 //! # // Test get_kmeans_hamerly
 //! # let mut result = Kmeans::new();
+//! # let mut best_error = f32::MAX;
 //! # for i in 0..runs {
 //! #     let run_result = kmeans_colors::get_kmeans_hamerly(
 //! #         k,
@@ -108,7 +112,9 @@
 //! #         &lab,
 //! #         seed + i as u64,
 //! #     );
-//! #     if run_result.score < result.score {
+//! #     let error = run_result.squared_error(&lab);
+//! #     if error < best_error {
+//! #         best_error = error;
 //! #         result = run_result;
 //! #     }
 //! # }
@@ -124,8 +130,10 @@
 //! k-means++ is used for centroid initialization. Because the initialization is
 //! random, the k-means calculation may be run multiple times to assure that
 //! the best result has been found. The algorithm can find itself in a
-//! sub-optimal result due to initial centroids, however, one run may suffice if
-//! the convergence threshold has been met.
+//! sub-optimal result due to initial centroids. Compare runs using
+//! [`Kmeans::squared_error`], which measures distances from points to their
+//! assigned centers. The convergence `score` only measures centroid movement
+//! and does not indicate clustering quality.
 //!
 //! The binary uses `8` as the default `k`. The iteration limit is set to `20`.
 //! The convergence factor defaults to `5.0` for `Lab` and `0.0025` for `Rgb`.
@@ -158,6 +166,7 @@
 //! #    .map(|x| x.into_format().into_color())
 //! #    .collect();
 //! # let mut result = Kmeans::new();
+//! # let mut best_error = f32::MAX;
 //! # for i in 0..runs {
 //! #     let run_result = get_kmeans(
 //! #         k,
@@ -167,7 +176,9 @@
 //! #         &lab,
 //! #         seed + i as u64,
 //! #     );
-//! #     if run_result.score < result.score {
+//! #     let error = run_result.squared_error(&lab);
+//! #     if error < best_error {
+//! #         best_error = error;
 //! #         result = run_result;
 //! #     }
 //! # }

@@ -59,7 +59,7 @@ pub struct Opt {
     pub factor: Option<f32>,
 
     /// Number of times to run the algorithm on the image, keeping the lowest
-    /// score.
+    /// total squared distance to the assigned centroids.
     #[structopt(short, long, default_value = "1", required = false)]
     pub runs: usize,
 
@@ -70,6 +70,10 @@ pub struct Opt {
     /// File extension of output.
     #[structopt(short, long = "ext", default_value = "png", required = false)]
     pub extension: String,
+
+    /// Encode PNG images and palettes faster, at the cost of larger files.
+    #[structopt(long)]
+    pub fast_png: bool,
 
     /// Print the k-means colors.
     ///
@@ -183,7 +187,7 @@ pub enum Command {
         factor: Option<f32>,
 
         /// Number of times to run the algorithm on the image, keeping the lowest
-        /// score.
+        /// total squared distance to the assigned centroids.
         #[structopt(short, long, default_value = "3", required = false)]
         runs: usize,
 
@@ -214,5 +218,9 @@ pub enum Command {
         /// transparent output image.
         #[structopt(long)]
         transparent: bool,
+
+        /// Encode PNG images faster, at the cost of larger files.
+        #[structopt(long)]
+        fast_png: bool,
     },
 }

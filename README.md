@@ -202,6 +202,18 @@ The k-means will be calculated without factoring in any pixels with
 transparency. Otherwise, transparent pixels become matte and negatively impact
 the results.
 
+Pass `--fast-png` to encode PNG images and palettes faster, at the cost of
+potentially larger files. JPEG output is unaffected.
+
+For library users, `Kmeans::score` measures convergence: the sum of the
+individual centroids' squared movements. Use `Kmeans::squared_error(&points)`
+to compare clustering quality across runs; smaller is better. The CLI uses
+this error to select the best run.
+
+Run `cargo bench --bench kmeans` from a repository checkout to measure
+initialization, complete Lloyd/Hamerly runs, and palette sorting on the bundled
+photographs. Image decoding and color conversion are excluded from the timings.
+
 ## Features
 - create a color palette from an image
 - Lab space or RGB space calculations

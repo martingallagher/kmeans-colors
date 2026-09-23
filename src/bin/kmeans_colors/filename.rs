@@ -41,8 +41,8 @@ pub fn create_filename(
                 };
                 temp.set_file_name(format!(
                     "{}-{}",
-                    &file.file_stem().unwrap().to_str().unwrap(),
-                    &temp.file_stem().unwrap().to_str().unwrap()
+                    file.file_stem().unwrap().to_str().unwrap(),
+                    temp.file_stem().unwrap().to_str().unwrap()
                 ));
                 temp.with_extension(ext)
             }
@@ -95,8 +95,8 @@ pub fn create_filename_palette(
                 };
                 temp.set_file_name(format!(
                     "{}-{}",
-                    &file.file_stem().unwrap().to_str().unwrap(),
-                    &temp.file_stem().unwrap().to_str().unwrap()
+                    file.file_stem().unwrap().to_str().unwrap(),
+                    temp.file_stem().unwrap().to_str().unwrap()
                 ));
                 temp.with_extension(ext)
             }

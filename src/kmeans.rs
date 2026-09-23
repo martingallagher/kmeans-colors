@@ -15,7 +15,8 @@ pub trait Calculate: Sized {
         indices: &[u8],
     );
 
-    /// Calculate the distance metric for convergence comparison.
+    /// Calculate the distance metric for convergence comparison. For squared
+    /// Euclidean distance, sum the individual centroids' squared movements.
     fn check_loop(centroids: &[Self], old_centroids: &[Self]) -> f32;
 
     /// Generate random point.
@@ -30,7 +31,8 @@ pub trait Calculate: Sized {
 /// indexed buffer.
 #[derive(Clone, Debug, Default)]
 pub struct Kmeans<C: Calculate> {
-    /// Sum of squares distance metric for centroids compared to old centroids.
+    /// Convergence metric from [`Calculate::check_loop`]. For the provided color
+    /// implementations, the sum of individual squared centroid movements.
     pub score: f32,
     /// Points determined to be centroids of input buffer.
     pub centroids: Vec<C>,
@@ -46,6 +48,22 @@ impl<C: Calculate> Kmeans<C> {
             centroids: Vec::new(),
             indices: Vec::new(),
         }
+    }
+
+    /// Sum squared distances from the input points to their assigned centroids.
+    /// Use this to compare clustering quality across runs; smaller is better.
+    /// Unlike [`Self::score`], this measures clustering error, not movement.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `buf` does not match the indexed buffer's length or an index
+    /// does not refer to a centroid.
+    pub fn squared_error(&self, buf: &[C]) -> f32 {
+        assert_eq!(buf.len(), self.indices.len());
+        buf.iter()
+            .zip(&self.indices)
+            .map(|(point, &index)| C::difference(point, &self.centroids[index as usize]))
+            .sum()
     }
 }
 
