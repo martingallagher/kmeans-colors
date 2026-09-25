@@ -68,21 +68,8 @@ where
     T: Float + FromPrimitive + Zero,
     Lab<Wp, T>: core::ops::AddAssign<Lab<Wp, T>> + Default,
 {
-    #[allow(clippy::cast_possible_truncation)]
     fn get_closest_centroid(lab: &[Lab<Wp, T>], centroids: &[Lab<Wp, T>], indices: &mut Vec<u8>) {
-        for color in lab.iter() {
-            let mut index = 0;
-            let mut diff;
-            let mut min = f32::MAX;
-            for (idx, cent) in centroids.iter().enumerate() {
-                diff = Self::difference(color, cent);
-                if diff < min {
-                    min = diff;
-                    index = idx;
-                }
-            }
-            indices.push(index as u8);
-        }
+        crate::kernels::assign(lab, centroids, indices);
     }
 
     #[allow(clippy::cast_precision_loss)]
@@ -135,21 +122,8 @@ where
     T: Float + FromPrimitive + Zero,
     Rgb<S, T>: core::ops::AddAssign<Rgb<S, T>> + Default,
 {
-    #[allow(clippy::cast_possible_truncation)]
     fn get_closest_centroid(rgb: &[Rgb<S, T>], centroids: &[Rgb<S, T>], indices: &mut Vec<u8>) {
-        for color in rgb.iter() {
-            let mut index = 0;
-            let mut diff;
-            let mut min = f32::MAX;
-            for (idx, cent) in centroids.iter().enumerate() {
-                diff = Self::difference(color, cent);
-                if diff < min {
-                    min = diff;
-                    index = idx;
-                }
-            }
-            indices.push(index as u8);
-        }
+        crate::kernels::assign(rgb, centroids, indices);
     }
 
     #[allow(clippy::cast_precision_loss)]
@@ -206,59 +180,12 @@ where
         compute_half_distances(centers);
     }
 
-    #[allow(clippy::cast_possible_truncation)]
     fn get_closest_centroid_hamerly(
         buffer: &[Self],
         centers: &HamerlyCentroids<Self>,
         points: &mut [HamerlyPoint],
     ) {
-        for (val, point) in buffer.iter().zip(points.iter_mut()) {
-            // Assign max of lower bound and half distance to z
-            let z = centers
-                .half_distances
-                .get(point.index as usize)
-                .unwrap()
-                .max(point.lower_bound);
-
-            if point.upper_bound <= z {
-                continue;
-            }
-
-            // Tighten upper bound
-            point.upper_bound =
-                Self::difference(val, centers.centroids.get(point.index as usize).unwrap()).sqrt();
-
-            if point.upper_bound <= z {
-                continue;
-            }
-
-            // Find the two closest centers to current point and their distances
-            if centers.centroids.len() < 2 {
-                continue;
-            }
-
-            let mut min1 = Self::difference(val, centers.centroids.first().unwrap());
-            let mut min2 = f32::MAX;
-            let mut c1 = 0;
-            for j in 1..centers.centroids.len() {
-                let diff = Self::difference(val, centers.centroids.get(j).unwrap());
-                if diff < min1 {
-                    min2 = min1;
-                    min1 = diff;
-                    c1 = j;
-                    continue;
-                }
-                if diff < min2 {
-                    min2 = diff;
-                }
-            }
-
-            if c1 as u8 != point.index {
-                point.index = c1 as u8;
-                point.upper_bound = min1.sqrt();
-            }
-            point.lower_bound = min2.sqrt();
-        }
+        crate::kernels::assign_hamerly(buffer, centers, points);
     }
 
     #[allow(clippy::cast_precision_loss)]
@@ -304,59 +231,12 @@ where
         compute_half_distances(centers);
     }
 
-    #[allow(clippy::cast_possible_truncation)]
     fn get_closest_centroid_hamerly(
         buffer: &[Self],
         centers: &HamerlyCentroids<Self>,
         points: &mut [HamerlyPoint],
     ) {
-        for (val, point) in buffer.iter().zip(points.iter_mut()) {
-            // Assign max of lower bound and half distance to z
-            let z = centers
-                .half_distances
-                .get(point.index as usize)
-                .unwrap()
-                .max(point.lower_bound);
-
-            if point.upper_bound <= z {
-                continue;
-            }
-
-            // Tighten upper bound
-            point.upper_bound =
-                Self::difference(val, centers.centroids.get(point.index as usize).unwrap()).sqrt();
-
-            if point.upper_bound <= z {
-                continue;
-            }
-
-            // Find the two closest centers to current point and their distances
-            if centers.centroids.len() < 2 {
-                continue;
-            }
-
-            let mut min1 = Self::difference(val, centers.centroids.first().unwrap());
-            let mut min2 = f32::MAX;
-            let mut c1 = 0;
-            for j in 1..centers.centroids.len() {
-                let diff = Self::difference(val, centers.centroids.get(j).unwrap());
-                if diff < min1 {
-                    min2 = min1;
-                    min1 = diff;
-                    c1 = j;
-                    continue;
-                }
-                if diff < min2 {
-                    min2 = diff;
-                }
-            }
-
-            if c1 as u8 != point.index {
-                point.index = c1 as u8;
-                point.upper_bound = min1.sqrt();
-            }
-            point.lower_bound = min2.sqrt();
-        }
+        crate::kernels::assign_hamerly(buffer, centers, points);
     }
 
     #[allow(clippy::cast_precision_loss)]

@@ -210,9 +210,21 @@ individual centroids' squared movements. Use `Kmeans::squared_error(&points)`
 to compare clustering quality across runs; smaller is better. The CLI uses
 this error to select the best run.
 
+The default build enables the `simd` feature, using `fearless_simd` to accelerate
+nearest-centroid assignment, k-means++ distance updates, and Hamerly searches.
+CPU support is detected at runtime on x86, with a portable scalar fallback on
+unsupported targets. SIMD requires Rust 1.89 or newer. Generic color types,
+first-centroid tie handling, and seeded initialization are preserved.
+
+Library users with `default-features = false` can opt in with
+`features = ["palette_color", "simd"]`. Build the scalar CLI with
+`cargo build --release --no-default-features --features app`.
+
 Run `cargo bench --bench kmeans` from a repository checkout to measure
-initialization, complete Lloyd/Hamerly runs, and palette sorting on the bundled
-photographs. Image decoding and color conversion are excluded from the timings.
+assignment, initialization, complete Lloyd/Hamerly runs, and palette sorting
+for Lab and RGB on the bundled photographs. Compare the scalar build using
+`cargo bench --bench kmeans --no-default-features --features app`.
+Image decoding and color conversion are excluded from the timings.
 
 ## Features
 - create a color palette from an image

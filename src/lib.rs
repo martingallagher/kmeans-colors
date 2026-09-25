@@ -14,6 +14,11 @@
 //! implementations have been provided for the [`palette`][palette] `Lab` and
 //! `Rgb` color types behind the `palette_color` feature.
 //!
+//! Enable the optional `simd` feature for accelerated color assignment,
+//! k-means++ initialization, and Hamerly searches using `fearless_simd`. It is
+//! enabled in default builds and requires Rust 1.89 or newer. Existing generic
+//! color types and seeded initialization are preserved.
+//!
 //! The binary located in `src/bin/kmeans_colors` shows examples of crate
 //! usage.
 //!
@@ -217,6 +222,7 @@
 #[cfg(feature = "palette_color")]
 mod colors;
 
+mod kernels;
 mod kmeans;
 mod plus_plus;
 mod sort;

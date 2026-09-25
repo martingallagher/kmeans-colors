@@ -35,26 +35,14 @@ pub fn init_plus_plus<C: crate::Calculate + Clone>(
     let mut distances = vec![f32::MAX; len];
     // Honor any centers supplied by callers before initialization.
     for cent in &centroids[..centroids.len() - 1] {
-        for (point, nearest) in buf.iter().zip(&mut distances) {
-            let distance = C::difference(point, cent);
-            if distance < *nearest {
-                *nearest = distance;
-            }
-        }
+        let _ = crate::kernels::update_distances(buf, cent, &mut distances);
     }
 
     // Pick a new centroid with weighted probability of `D(x)^2 / sum(D(x)^2)`,
     // where `D(x)^2` is the distance to the closest centroid
     for _ in 1..k {
         let newest = centroids.last().unwrap();
-        let mut sum = 0.0;
-        for (point, nearest) in buf.iter().zip(&mut distances) {
-            let distance = C::difference(point, newest);
-            if distance < *nearest {
-                *nearest = distance;
-            }
-            sum += *nearest;
-        }
+        let sum = crate::kernels::update_distances(buf, newest, &mut distances);
 
         // If centroids match all colors, return early
         if !sum.is_normal() {

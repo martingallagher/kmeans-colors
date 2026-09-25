@@ -32,9 +32,9 @@ jobs:
       - name: Build binary
         run: cargo build -v --bins
       - name: Test library (palette feature)
-        run: cargo test --no-default-features --lib --features palette_color
-      - name: Doc tests (palette feature)
-        run: cargo test --no-default-features --doc --features palette_color
+        run: cargo test --no-default-features --features palette_color
+      - name: Test SIMD (palette feature)
+        run: cargo test --no-default-features --features palette_color,simd
       - name: Build docs
         run: cargo doc --no-deps --no-default-features --features palette_color
 
