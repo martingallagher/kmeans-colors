@@ -11,8 +11,8 @@
 //!
 //! When using the library, set `default-features = false` in the Cargo.toml to
 //! avoid bringing in the binary dependencies. If working with colors,
-//! implementations have been provided for the [`palette`][palette] `Lab` and
-//! `Rgb` color types behind the `palette_color` feature.
+//! implementations have been provided for the [`palette`][palette] `Lab`,
+//! `Oklab`, and `Rgb` color types behind the `palette_color` feature.
 //!
 //! Enable the optional `simd` feature for accelerated color assignment,
 //! k-means++ initialization, and Hamerly searches using `fearless_simd`. It is
@@ -39,15 +39,12 @@
 //! ## Calculating k-means with `palette_color`
 //!
 //! The `palette_color` feature provides implementations of the `Calculate`
-//! trait for the `Lab` color space and `Rgb` color space. Each space has
+//! trait for the `Lab`, `Oklab`, and `Rgb` color spaces. Each space has
 //! advantages and drawbacks due to the characteristics of the color space.
 //!
-//! The `Lab` calculation produces more perceptually accurate results at a
-//! slightly slower runtime. `Rgb` calculation will converge faster than `Lab`
-//! but the results may not visually correlate as well to the original image.
-//! Overall, properly converged results should not differ that drastically
-//! except at lower `k` counts. At `k=1`, the average color of an image,
-//! results should match almost exactly.
+//! `Lab` and `Oklab` use perceptual coordinates, while `Rgb` clusters RGB
+//! channel values directly. At `k=1`, each computes the average in its own
+//! space, so the resulting RGB colors can differ substantially.
 //!
 //! Note: If k-means calculation is taking too long, try scaling down the
 //! image size. A full-size image is not required for calculating the color
@@ -141,10 +138,32 @@
 //! and does not indicate clustering quality.
 //!
 //! The binary uses `8` as the default `k`. The iteration limit is set to `20`.
-//! The convergence factor defaults to `5.0` for `Lab` and `0.0025` for `Rgb`.
+//! The convergence factor defaults to `5.0` for `Lab`, `0.0005` for `Oklab`,
+//! and `0.0025` for `Rgb`.
 //! The number of runs defaults to `3` for one of the binary subcommands.
 //! If the results do not appear correct, raise the iteration limit as
 //! convergence was probably not met.
+//!
+//! ### Oklab
+//!
+//! Oklab supports both Lloyd's and Hamerly's algorithms, SIMD, lightness
+//! sorting, and population reporting. It uses native coordinates (`L` is
+//! `0..=1` for sRGB), so Lab convergence thresholds should not be reused.
+//! `0.0005` is the CLI's starting threshold; lower it for tighter convergence.
+//!
+//! ```
+//! use kmeans_colors::{get_kmeans_hamerly, Sort};
+//! use palette::{IntoColor, Oklab, Srgb};
+//!
+//! let pixels = [Srgb::new(255u8, 0, 0), Srgb::new(0, 255, 0)];
+//! let colors: Vec<Oklab> = pixels.iter()
+//!     .map(|pixel| pixel.into_linear::<f32>().into_color())
+//!     .collect();
+//! let result = get_kmeans_hamerly(2, 20, 0.0005, false, &colors, 42);
+//! let palette = Oklab::sort_indexed_colors(&result.centroids, &result.indices);
+//! assert_eq!(palette.len(), 2);
+//! assert!(palette.iter().all(|color| color.percentage == 0.5));
+//! ```
 //!
 //! ### Getting the dominant color
 //!
@@ -228,7 +247,7 @@ mod plus_plus;
 mod sort;
 
 #[cfg(feature = "palette_color")]
-pub use colors::MapColor;
+pub use colors::{get_diverse_palette, MapColor};
 
 pub use kmeans::{
     get_kmeans, get_kmeans_hamerly, Calculate, Hamerly, HamerlyCentroids, HamerlyPoint, Kmeans,

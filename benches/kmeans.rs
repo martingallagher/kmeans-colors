@@ -2,7 +2,7 @@
 use std::{hint::black_box, time::Instant};
 
 use kmeans_colors::{get_kmeans, get_kmeans_hamerly, init_plus_plus, Hamerly, Sort};
-use palette::{IntoColor, Lab, Srgb};
+use palette::{IntoColor, Lab, Oklab, Srgb};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
@@ -83,6 +83,16 @@ fn main() {
             .pixels()
             .map(|p| Srgb::new(p[0], p[1], p[2]).into_format())
             .collect();
+        let oklab: Vec<Oklab> = image
+            .pixels()
+            .map(|p| {
+                Srgb::new(p[0], p[1], p[2])
+                    .into_linear::<f32>()
+                    .into_color()
+            })
+            .collect();
+
+        benchmark(file, "Oklab", &oklab, 0.0005);
         benchmark(file, "Lab", &lab, 5.0);
         benchmark(file, "RGB", &rgb, 0.0025);
     }

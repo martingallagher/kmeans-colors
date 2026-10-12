@@ -61,7 +61,7 @@ pub fn create_filename(
 pub fn create_filename_palette(
     input: &[PathBuf],
     output: &Option<PathBuf>,
-    rgb: bool,
+    color: &str,
     k: Option<u8>,
     file: &Path,
 ) -> Result<PathBuf, CliError> {
@@ -79,7 +79,7 @@ pub fn create_filename_palette(
                 temp
             }
             None => {
-                let mut temp = PathBuf::from(generate_filename_palette(file, k.unwrap(), rgb)?);
+                let mut temp = PathBuf::from(generate_filename_palette(file, k.unwrap(), color)?);
                 temp.set_extension(extension);
                 temp
             }
@@ -101,7 +101,7 @@ pub fn create_filename_palette(
                 temp.with_extension(ext)
             }
             None => {
-                let mut temp = PathBuf::from(generate_filename_palette(file, k.unwrap(), rgb)?);
+                let mut temp = PathBuf::from(generate_filename_palette(file, k.unwrap(), color)?);
                 temp.set_extension(extension);
                 temp
             }
@@ -124,12 +124,11 @@ fn generate_filename(path: &Path, k: Option<u8>) -> Result<String, CliError> {
 }
 
 /// Appends a timestamp to an input filename to be used as a palette filename.
-fn generate_filename_palette(path: &Path, k: u8, rgb: bool) -> Result<String, CliError> {
+fn generate_filename_palette(path: &Path, k: u8, color: &str) -> Result<String, CliError> {
     let filename = path.file_stem().unwrap().to_str().unwrap().to_string();
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
     let secs = now.as_secs();
     let millis = format!("{:03}", now.subsec_millis());
-    let color = if rgb { "rgb" } else { "lab" };
 
     Ok(filename + "-" + &secs.to_string() + &millis + "-" + color + "-" + &k.to_string())
 }

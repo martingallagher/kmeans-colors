@@ -44,7 +44,7 @@ pub struct Opt {
     #[structopt(short, long = "iterations", default_value = "20", required = false)]
     pub max_iter: usize,
 
-    /// Convergence factor. Defaults to "10.0" for Lab and "0.0025" for RGB.
+    /// Convergence factor. Defaults to "5.0" for Lab, "0.0005" for Oklab, and "0.0025" for RGB.
     ///
     /// One of the thresholds for halting calculation of k-means. The other is
     /// a limit on total iterations. Decrease the factor for a higher quality
@@ -88,8 +88,17 @@ pub struct Opt {
     pub percentage: bool,
 
     /// Perform the k-means in `RGB` color space.
-    #[structopt(long)]
+    #[structopt(long, conflicts_with = "oklab")]
     pub rgb: bool,
+
+    /// Perform the k-means in Oklab color space.
+    #[structopt(long, conflicts_with = "rgb")]
+    pub oklab: bool,
+
+    /// Select a diverse Oklab palette using square-root-weighted histogram counts.
+    /// Deterministic; k-means iteration, convergence, run and seed options do not apply.
+    #[structopt(long, conflicts_with_all = &["rgb", "max-iter", "factor", "runs", "seed"])]
+    pub diverse: bool,
 
     /// Disable outputting the image. Used in combination with printing
     /// colors as output.
@@ -201,8 +210,12 @@ pub enum Command {
         percentage: bool,
 
         /// Perform the k-means operations in `RGB` color space.
-        #[structopt(long)]
+        #[structopt(long, conflicts_with = "oklab")]
         rgb: bool,
+
+        /// Perform the k-means operations in Oklab color space.
+        #[structopt(long, conflicts_with = "rgb")]
+        oklab: bool,
 
         /// Enable printing the convergence distance and other internal
         /// information, such as iteration count.

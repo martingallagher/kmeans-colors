@@ -222,13 +222,75 @@ Library users with `default-features = false` can opt in with
 
 Run `cargo bench --bench kmeans` from a repository checkout to measure
 assignment, initialization, complete Lloyd/Hamerly runs, and palette sorting
-for Lab and RGB on the bundled photographs. Compare the scalar build using
+for Lab, Oklab, and RGB on the bundled photographs. Compare the scalar build using
 `cargo bench --bench kmeans --no-default-features --features app`.
 Image decoding and color conversion are excluded from the timings.
 
+### Oklab
+
+Pass `--oklab` to cluster in Oklab instead of the default Lab space:
+
+```sh
+kmeans_colors -i gfx/pink.jpg --oklab -k 8 --no-file --palette --pct
+kmeans_colors find -i gfx/pink.jpg --oklab -c ff0000,00ff00 --replace
+```
+
+`--oklab` and `--rgb` are mutually exclusive. Oklab supports the same palette,
+transparency, sorting, and replacement options as Lab. Its convergence factor
+defaults to `0.0005`, because its coordinates use a smaller scale than Lab;
+use `--factor` to adjust it. This threshold measures summed squared centroid
+movement, not palette quality.
+
+Library users can pass `palette::Oklab<f32>` or `palette::Oklab<f64>` to
+`get_kmeans` and `get_kmeans_hamerly` with `palette_color` enabled. Oklab also
+implements `Sort` and `MapColor`; `Oklaba` supports `MapColor`.
+Convert sRGB pixels through linear sRGB before clustering, as shown in the
+library's Oklab example. SIMD acceleration works with Oklab as well.
+
+### Histogram weighting and diversity
+
+Use `--diverse` to favor small, contrasting accents when extracting a palette:
+
+```sh
+kmeans_colors -i gfx/pink.jpg --diverse -k 5 --no-file --palette --pct
+```
+
+This mode scans every input pixel into a 5-bit-per-channel sRGB histogram
+(at most 32,768 bins). Each bin contributes an actual source pixel nearest its
+bin center. Starting with the most populated bin, it selects each remaining
+color by maximizing `sqrt(pixel_count) * nearest_selected_Oklab_distance²`.
+Softening the counts gives rare colors more influence, and the distance term
+discourages spending several palette entries on similar background shades.
+The histogram supplies the candidates directly; no iterative clustering is
+needed. Results are deterministic, including when pixel order changes.
+
+`--diverse` uses Oklab automatically and supports palette output, recoloring,
+`--transparent`, `--sort`, and `--proportional`. Output defaults to selection
+order; `--sort` orders colors by coverage. K-means options `--iterations`,
+`--factor`, `--runs`, `--seed`, and `--rgb` cannot be combined with this mode.
+Other modes retain their existing behavior.
+
+Percentages use original pixel counts, assigning each histogram bin to its
+nearest selected color. They sum to one and are not the softened selection
+weights. They approximate pixel-by-pixel coverage because colors in a bin are
+grouped together. With `--transparent`, only fully opaque pixels count, as in
+the other CLI modes. Library callers handle alpha filtering or compositing
+before extraction.
+
+Library users can call `get_diverse_palette(k, pixels)` with `palette_color`
+enabled. `pixels` is any iterator or collection of `palette::Srgb<u8>`. The
+result is a `Vec<CentroidData<palette::Oklab>>` in selection order, with up to
+256 colors. Empty input or zero requested colors returns an empty palette.
+
+This is a color heuristic, not object detection: contrasting noise can also
+be promoted, and subtle colors in the same histogram bin are merged. It
+improves the chances of retaining a small red subject without guaranteeing
+that every meaningful object will appear in a limited palette.
+
 ## Features
 - create a color palette from an image
-- Lab space or RGB space calculations
+- Lab, Oklab, or RGB space calculations
+- histogram weighting and perceptual diversity selection for accent colors
 - find the nearest colors to input colors
 - replace the colors with custom colors
 - adjustable iteration count and repetition

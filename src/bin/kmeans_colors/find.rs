@@ -1,18 +1,26 @@
 use palette::cast::{AsComponents, ComponentsAs};
-use palette::{white_point::D65, FromColor, IntoColor, Lab, Srgb, Srgba};
+use palette::{FromColor, IntoColor, Lab, LinSrgb, LinSrgba, Oklab, Srgb, Srgba};
 
 use crate::args::Command;
 use crate::err::CliError;
 use crate::filename::create_filename;
 use crate::utils::{
-    cached_srgba_to_lab, indexed_palette, map_opaque_pixels, parse_color, print_colors, save_image,
-    save_image_alpha,
+    cached_srgba_to_color, indexed_palette, map_opaque_pixels, parse_color, print_colors,
+    save_image, save_image_alpha,
 };
-use kmeans_colors::{get_kmeans, get_kmeans_hamerly, Calculate, Kmeans, MapColor, Sort};
+use kmeans_colors::{get_kmeans, get_kmeans_hamerly, Calculate, Hamerly, Kmeans, MapColor, Sort};
 
 /// Find the image pixels which closest match the supplied colors and save that
 /// image as output.
-pub fn find_colors(
+pub fn find_colors(command: Command) -> Result<(), Box<dyn std::error::Error>> {
+    if matches!(&command, Command::Find { oklab: true, .. }) {
+        find_with_space::<Oklab>(command)
+    } else {
+        find_with_space::<Lab>(command)
+    }
+}
+
+fn find_with_space<C>(
     Command::Find {
         input,
         colors,
@@ -22,30 +30,46 @@ pub fn find_colors(
         runs,
         percentage,
         rgb,
+        oklab,
         verbose,
         output,
         seed,
         transparent,
         fast_png,
     }: Command,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    C: Hamerly
+        + Sort
+        + Copy
+        + FromColor<LinSrgb>
+        + FromColor<LinSrgba>
+        + IntoColor<Srgb>
+        + IntoColor<LinSrgb>,
+{
     // Print filename if multiple files and percentage is set
     let display_filename = (input.len() > 1) && (percentage);
-    let converge = factor.unwrap_or(if !rgb { 5.0 } else { 0.0025 });
+    let converge = factor.unwrap_or(if oklab {
+        0.0005
+    } else if rgb {
+        0.0025
+    } else {
+        5.0
+    });
 
     let seed = seed.unwrap_or(0);
 
-    // Cached results of Srgb<u8> -> Lab conversions; not cleared between runs
+    // Cached results of Srgb<u8> -> Lab/Oklab conversions; not cleared between runs
     let mut lab_cache = hashbrown::HashMap::default();
-    // Vec of pixels converted to Lab; cleared and reused between runs
-    let mut lab_pixels: Vec<Lab<D65, f32>> = Vec::new();
+    // Vec of pixels converted to Lab/Oklab; cleared and reused between runs
+    let mut lab_pixels: Vec<C> = Vec::new();
     // Vec of pixels converted to Srgb<f32>; cleared and reused between runs
     let mut rgb_pixels: Vec<Srgb<f32>> = Vec::new();
 
-    // Default to Lab colors
+    // Perceptual color spaces
     if !rgb {
         // Initialize user centroids
-        let centroids: Vec<Lab<D65, f32>> = colors
+        let centroids: Vec<C> = colors
             .iter()
             .map(|c| {
                 parse_color(c.trim_start_matches('#')).map(|c| c.into_linear::<f32>().into_color())
@@ -64,9 +88,9 @@ pub fn find_colors(
             lab_pixels.clear();
 
             if !transparent {
-                cached_srgba_to_lab(img_vec.iter(), &mut lab_cache, &mut lab_pixels);
+                cached_srgba_to_color(img_vec.iter(), &mut lab_cache, &mut lab_pixels);
             } else {
-                cached_srgba_to_lab(
+                cached_srgba_to_color(
                     img_vec.iter().filter(|x: &&Srgba<u8>| x.alpha == 255),
                     &mut lab_cache,
                     &mut lab_pixels,
@@ -78,10 +102,10 @@ pub fn find_colors(
 
                 // We only need to do one pass of getting the closest colors to the
                 // custom centroids
-                Lab::<D65, f32>::get_closest_centroid(&lab_pixels, &centroids, &mut indices);
+                C::get_closest_centroid(&lab_pixels, &centroids, &mut indices);
 
                 if percentage {
-                    let res = Lab::<D65, f32>::sort_indexed_colors(&centroids, &indices);
+                    let res = C::sort_indexed_colors(&centroids, &indices);
                     print_colors(percentage, &res)?;
                 }
 
@@ -162,8 +186,7 @@ pub fn find_colors(
                 // corresponds to the index of the colors from darkest to lightest.
                 // We replace the colors in `sorted` with our centroids for printing
                 // purposes.
-                let mut res =
-                    Lab::<D65, f32>::sort_indexed_colors(&result.centroids, &result.indices);
+                let mut res = C::sort_indexed_colors(&result.centroids, &result.indices);
                 res.iter_mut()
                     .zip(&centroids)
                     .for_each(|(s, c)| s.centroid = *c);
@@ -191,11 +214,7 @@ pub fn find_colors(
                     )?;
                 } else {
                     let mut indices = Vec::with_capacity(lab_pixels.len());
-                    Lab::<D65, f32>::get_closest_centroid(
-                        &lab_pixels,
-                        &result.centroids,
-                        &mut indices,
-                    );
+                    C::get_closest_centroid(&lab_pixels, &result.centroids, &mut indices);
 
                     let centroids = &sorted
                         .iter()

@@ -8,7 +8,7 @@ use rand::{Rng, RngExt};
 use crate::kmeans::{Calculate, Hamerly, HamerlyCentroids, HamerlyPoint};
 
 #[cfg(feature = "palette_color")]
-fn sum_clusters<C: Copy + Default + core::ops::AddAssign>(
+pub(super) fn sum_clusters<C: Copy + Default + core::ops::AddAssign>(
     buf: &[C],
     indices: impl Iterator<Item = u8>,
     count: usize,
@@ -24,7 +24,7 @@ fn sum_clusters<C: Copy + Default + core::ops::AddAssign>(
 }
 
 #[cfg(feature = "palette_color")]
-fn compute_half_distances<C: Hamerly>(centers: &mut HamerlyCentroids<C>) {
+pub(super) fn compute_half_distances<C: Hamerly>(centers: &mut HamerlyCentroids<C>) {
     centers.half_distances.fill(f32::MAX);
     for (i, ci) in centers.centroids.iter().enumerate() {
         for (j, cj) in centers.centroids.iter().enumerate().skip(i + 1) {
@@ -39,7 +39,10 @@ fn compute_half_distances<C: Hamerly>(centers: &mut HamerlyCentroids<C>) {
 }
 
 #[cfg(feature = "palette_color")]
-fn update_bounds<C: Hamerly>(centers: &HamerlyCentroids<C>, points: &mut [HamerlyPoint]) {
+pub(super) fn update_bounds<C: Hamerly>(
+    centers: &HamerlyCentroids<C>,
+    points: &mut [HamerlyPoint],
+) {
     let (mut largest, mut second_largest, mut largest_index) = (0.0, 0.0, 0);
     for (index, &delta) in centers.deltas.iter().enumerate() {
         if delta > largest {
@@ -354,7 +357,7 @@ where
 #[cfg(all(test, feature = "palette_color"))]
 mod tests {
     use super::*;
-    use palette::Srgb;
+    use palette::{Oklab, Srgb};
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha8Rng;
 
@@ -434,6 +437,13 @@ mod tests {
             Lab::new(0.0, 0.0, 0.0),
         ]);
         check_centroid_updates(&[
+            Oklab::new(0.1, 0.2, -0.3),
+            Oklab::new(0.8, -0.3, 0.1),
+            Oklab::new(0.2, 0.1, 0.2),
+            Oklab::new(0.4, -0.2, 0.3),
+            Oklab::new(0.0, 0.0, 0.0),
+        ]);
+        check_centroid_updates(&[
             Srgb::new(0.1, 0.2, 0.3),
             Srgb::new(0.8, 0.9, 0.7),
             Srgb::new(0.2, 0.1, 0.5),
@@ -496,6 +506,11 @@ mod tests {
             Lab::new(6.0, 0.0, 0.0),
         ]);
         check_hamerly_distances_and_bounds([
+            Oklab::new(0.0, 0.0, 0.0),
+            Oklab::new(0.2, 0.0, 0.0),
+            Oklab::new(0.6, 0.0, 0.0),
+        ]);
+        check_hamerly_distances_and_bounds([
             Srgb::new(0.0, 0.0, 0.0),
             Srgb::new(0.2, 0.0, 0.0),
             Srgb::new(0.6, 0.0, 0.0),
@@ -519,6 +534,9 @@ mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(43);
         let lab: Vec<Lab> = (0..5).map(|_| Lab::create_random(&mut rng)).collect();
         let rgb: Vec<Srgb> = (0..5).map(|_| Srgb::create_random(&mut rng)).collect();
+        let oklab: Vec<Oklab> = (0..5).map(|_| Oklab::create_random(&mut rng)).collect();
+
+        check_algorithms(&oklab.repeat(3));
         check_algorithms(&lab.repeat(3));
         check_algorithms(&rgb.repeat(3));
     }

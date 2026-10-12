@@ -232,7 +232,7 @@ mod tests {
     use super::*;
     use core::convert::TryFrom;
     use fearless_simd::{dispatch, Level};
-    use palette::{Lab, Srgb};
+    use palette::{Lab, Oklab, Srgb};
 
     fn equal_float(actual: f32, expected: f32) {
         assert!(actual.to_bits() == expected.to_bits() || (actual.is_nan() && expected.is_nan()));
@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     #[allow(clippy::cast_possible_truncation)]
-    fn simd_matches_scalar_for_lab_rgb_and_f64() {
+    fn simd_matches_scalar_for_color_spaces_and_f64() {
         let components: Vec<_> = (0..257)
             .map(|i| {
                 [
@@ -332,6 +332,17 @@ mod tests {
             .iter()
             .map(|&[r, g, b]| Srgb::new(r / 255.0, g / 255.0, b / 255.0))
             .collect();
+        let oklab: Vec<Oklab> = components
+            .iter()
+            .map(|&[l, a, b]| Oklab::new(l as f32 / 100.0, a as f32 / 320.0, b as f32 / 320.0))
+            .collect();
+        let oklab64: Vec<Oklab<f64>> = components
+            .iter()
+            .map(|&[l, a, b]| Oklab::new(l / 100.0, a / 320.0, b / 320.0))
+            .collect();
+
+        check(&oklab);
+        check(&oklab64);
         check(&lab);
         check(&rgb);
         check(&lab64);
